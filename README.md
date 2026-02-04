@@ -1,2 +1,14 @@
 # fpga-DNN-inference
-Running basic DNN inference on Artix-7 FPGA
+
+Pure-RTL (VHDL) NN inference pipeline targeting the Digilent Nexys Video.
+
+## Quick Start
+- Build bitstream (Vivado CLI):
+  - `make build`
+
+## Repo Layout
+- `rtl/`: synthesizable VHDL
+- `constraints/`: board constraints (XDC)
+- `scripts/`: build/sim helpers
+- `sim/`: testbenches and fixtures
+- `host/python/`: host-side tooling

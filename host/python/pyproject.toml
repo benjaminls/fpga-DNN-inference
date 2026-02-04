@@ -1,0 +1,10 @@
+[project]
+name = "nnfpga"
+version = "0.0.0"
+description = "Host-side tools for fpga-DNN-inference"
+requires-python = ">=3.9"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
