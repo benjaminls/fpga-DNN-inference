@@ -1,0 +1,35 @@
+# Vivado
+*.jou
+*.log
+*.str
+*.pb
+*.vcd
+*.wdb
+*.xpr
+*.xcix
+*.xci
+*.dcp
+*.rpt
+*.xml
+*.bit
+*.bin
+*.ltx
+*.hwh
+*.hwdef
+*.cache
+*.runs
+*.ip_user_files
+*.sdk
+*.sim
+*.srcs
+build/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+
+# OS
+.DS_Store
