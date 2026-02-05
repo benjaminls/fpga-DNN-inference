@@ -74,3 +74,8 @@ run_tb tb_tensor_adapter \
   "$ROOT_DIR/rtl/pkg/nn_pkg.vhd" \
   "$ROOT_DIR/rtl/nn/tensor_adapter.vhd" \
   "$ROOT_DIR/sim/tb/tb_tensor_adapter.vhd"
+
+run_tb tb_hls4ml_wrap_stub \
+  "$ROOT_DIR/rtl/pkg/nn_pkg.vhd" \
+  "$ROOT_DIR/rtl/nn/hls4ml_wrap.vhd" \
+  "$ROOT_DIR/sim/tb/tb_hls4ml_wrap_stub.vhd"
