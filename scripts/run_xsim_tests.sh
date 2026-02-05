@@ -56,3 +56,10 @@ run_tb tb_width_conv \
   "$ROOT_DIR/rtl/stream/width_conv/byte_to_word.vhd" \
   "$ROOT_DIR/rtl/stream/width_conv/word_to_byte.vhd" \
   "$ROOT_DIR/sim/tb/tb_width_conv.vhd"
+
+run_tb tb_pkt_rx_tx \
+  "$ROOT_DIR/rtl/pkg/pkt_pkg.vhd" \
+  "$ROOT_DIR/rtl/protocol/crc16.vhd" \
+  "$ROOT_DIR/rtl/protocol/pkt_tx.vhd" \
+  "$ROOT_DIR/rtl/protocol/pkt_rx.vhd" \
+  "$ROOT_DIR/sim/tb/tb_pkt_rx_tx.vhd"
