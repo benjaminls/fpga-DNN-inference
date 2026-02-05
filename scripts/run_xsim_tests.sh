@@ -63,3 +63,9 @@ run_tb tb_pkt_rx_tx \
   "$ROOT_DIR/rtl/protocol/pkt_tx.vhd" \
   "$ROOT_DIR/rtl/protocol/pkt_rx.vhd" \
   "$ROOT_DIR/sim/tb/tb_pkt_rx_tx.vhd"
+
+run_tb tb_status_path \
+  "$ROOT_DIR/rtl/top/build_id_pkg.vhd" \
+  "$ROOT_DIR/rtl/pkg/nn_pkg.vhd" \
+  "$ROOT_DIR/rtl/ctrl/mmio_status.vhd" \
+  "$ROOT_DIR/sim/tb/tb_status_path.vhd"
