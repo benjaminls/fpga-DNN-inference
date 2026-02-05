@@ -1,24 +1,50 @@
 #!/usr/bin/env bash
 set -euo pipefail
+set -x
 
 source ~/fpga/2025.2/Vivado/settings64.sh
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD_DIR="$ROOT_DIR/build/xsim"
+LOG_DIR="$BUILD_DIR/logs"
 
-mkdir -p "$BUILD_DIR"
+rm -rf "$BUILD_DIR"
+mkdir -p "$LOG_DIR"
 cd "$BUILD_DIR"
+
+{
+  echo "DATE: $(date)"
+  echo "HOST: $(hostname)"
+  echo "PWD: $(pwd)"
+  echo "XILINX_VIVADO: ${XILINX_VIVADO:-}"
+  command -v xsim
+  xsim --version || true
+  command -v xvhdl
+  xvhdl --version || true
+  command -v xelab
+  xelab --version || true
+} > "$LOG_DIR/env.log" 2>&1
 
 run_tb() {
   local name="$1"
   shift
   local sources=("$@")
 
+  local test_dir="$BUILD_DIR/$name"
+  rm -rf "$test_dir"
+  mkdir -p "$test_dir"
+  cd "$test_dir"
+
   rm -rf xsim.dir work
 
-  xvhdl -2008 -work work "${sources[@]}"
-  xelab -debug typical -top "$name"
-  xsim "work.$name" -R
+  xvhdl -2008 -work work "${sources[@]}" 2>&1 | tee "$LOG_DIR/${name}_xvhdl.log"
+  xelab -debug typical -top "$name" 2>&1 | tee "$LOG_DIR/${name}_xelab.log"
+
+  # xsim resolves xsim.dir relative to the current working directory; run inside test_dir
+  # so it can find the snapshot child executable (xsimk) and avoid "child exe not found".
+  xsim "work.$name" -R 2>&1 | tee "$LOG_DIR/${name}_xsim.log"
+
+  cd "$BUILD_DIR"
 }
 
 run_tb tb_stream_fifo \
