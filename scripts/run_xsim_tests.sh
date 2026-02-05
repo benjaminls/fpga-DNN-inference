@@ -69,3 +69,8 @@ run_tb tb_status_path \
   "$ROOT_DIR/rtl/pkg/nn_pkg.vhd" \
   "$ROOT_DIR/rtl/ctrl/mmio_status.vhd" \
   "$ROOT_DIR/sim/tb/tb_status_path.vhd"
+
+run_tb tb_tensor_adapter \
+  "$ROOT_DIR/rtl/pkg/nn_pkg.vhd" \
+  "$ROOT_DIR/rtl/nn/tensor_adapter.vhd" \
+  "$ROOT_DIR/sim/tb/tb_tensor_adapter.vhd"
