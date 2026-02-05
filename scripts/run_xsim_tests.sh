@@ -79,3 +79,14 @@ run_tb tb_hls4ml_wrap_stub \
   "$ROOT_DIR/rtl/pkg/nn_pkg.vhd" \
   "$ROOT_DIR/rtl/nn/hls4ml_wrap.vhd" \
   "$ROOT_DIR/sim/tb/tb_hls4ml_wrap_stub.vhd"
+
+run_tb tb_top_e2e \
+  "$ROOT_DIR/rtl/pkg/pkt_pkg.vhd" \
+  "$ROOT_DIR/rtl/pkg/nn_pkg.vhd" \
+  "$ROOT_DIR/rtl/protocol/crc16.vhd" \
+  "$ROOT_DIR/rtl/protocol/pkt_rx.vhd" \
+  "$ROOT_DIR/rtl/protocol/pkt_tx.vhd" \
+  "$ROOT_DIR/rtl/nn/tensor_adapter.vhd" \
+  "$ROOT_DIR/rtl/nn/hls4ml_wrap.vhd" \
+  "$ROOT_DIR/rtl/ctrl/perf_counters.vhd" \
+  "$ROOT_DIR/sim/tb/tb_top_e2e.vhd"
