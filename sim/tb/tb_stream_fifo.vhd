@@ -64,7 +64,7 @@ begin
   uut: entity work.stream_fifo
     generic map (
       G_DATA_WIDTH => 8,
-      G_DEPTH => 2
+      G_DEPTH => 4
     )
     port map (
       clk => clk,
@@ -93,16 +93,20 @@ begin
     expect_byte(out_data, out_valid, out_ready, clk, x"22");
     expect_byte(out_data, out_valid, out_ready, clk, x"33");
 
-    -- backpressure: fill FIFO
+    -- backpressure: fill FIFO (depth = 4)
     out_ready <= '0';
     send_byte(in_data, in_valid, in_ready, clk, x"AA");
     send_byte(in_data, in_valid, in_ready, clk, x"BB");
+    send_byte(in_data, in_valid, in_ready, clk, x"CC");
+    send_byte(in_data, in_valid, in_ready, clk, x"DD");
     wait until rising_edge(clk);
     assert in_ready = '0' report "FIFO should be full" severity failure;
 
     -- drain
     expect_byte(out_data, out_valid, out_ready, clk, x"AA");
     expect_byte(out_data, out_valid, out_ready, clk, x"BB");
+    expect_byte(out_data, out_valid, out_ready, clk, x"CC");
+    expect_byte(out_data, out_valid, out_ready, clk, x"DD");
 
     wait for 5*CLK_PERIOD;
     report "tb_stream_fifo completed" severity note;
