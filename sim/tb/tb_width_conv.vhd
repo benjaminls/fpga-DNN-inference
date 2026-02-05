@@ -24,6 +24,7 @@ architecture tb of tb_width_conv is
   signal out_valid : std_logic;
   signal out_ready : std_logic := '1';
   signal out_data  : std_logic_vector(7 downto 0);
+  signal reset_count : std_logic := '0';
 
   type byte_arr_t is array (natural range <>) of std_logic_vector(7 downto 0);
   constant TEST_BYTES : byte_arr_t := (
@@ -86,7 +87,7 @@ begin
   monitor: process (clk)
   begin
     if rising_edge(clk) then
-      if rst = '1' then
+      if rst = '1' or reset_count = '1' then
         out_count <= 0;
       else
         if out_valid = '1' and out_ready = '1' then
@@ -113,7 +114,9 @@ begin
     end loop;
 
     -- odd-length test: send 5 bytes, expect only 4 out
-    out_count <= 0;
+    reset_count <= '1';
+    wait until rising_edge(clk);
+    reset_count <= '0';
     for i in 0 to 4 loop
       send_byte(in_data, in_valid, in_ready, clk, std_logic_vector(to_unsigned(i, 8)));
     end loop;
