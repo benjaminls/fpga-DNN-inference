@@ -4,6 +4,7 @@ use ieee.std_logic_1164.all;
 package pkt_pkg is
   constant PKT_MAGIC   : std_logic_vector(15 downto 0) := x"A55A";
   constant PKT_VERSION : std_logic_vector(7 downto 0)  := x"01";
+  constant PKT_HDR_LEN : natural := 6;
 
   subtype pkt_type_t is std_logic_vector(7 downto 0);
 
