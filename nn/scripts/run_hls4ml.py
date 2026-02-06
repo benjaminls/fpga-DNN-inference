@@ -9,12 +9,23 @@ from typing import Any, Dict
 import sys
 import os
 import subprocess
-
+import json
 import yaml
+import warnings
+
+import torch
+try:
+    import hls4ml  # type: ignore
+except Exception as exc:  # pragma: no cover - environment-dependent
+    raise RuntimeError("hls4ml is not installed in this environment") from exc
+
+from nn.models import mlp_regressor
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
+
+HLSCONFIG = Dict[str, Any]
 
 # Ensure Vitis binaries are on PATH if XILINX_VITIS is set (possibly unnecessary)
 if "XILINX_VITIS" in os.environ:
@@ -26,15 +37,52 @@ def _load_config(path: str | Path) -> Dict[str, Any]:
         return yaml.safe_load(f)
 
 
-def _build_hls_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
+def _build_hls_config(model: Any, cfg: Dict[str, Any]) -> Dict[str, Any]:
+    m = cfg["model"]
     h = cfg["hls4ml"]
-    hls_config: Dict[str, Any] = {
-        "Model": {
-            "Precision": h.get("precision", "ap_fixed<16,6>"),
-            "ReuseFactor": int(h.get("reuse_factor", 1)),
-            "Strategy": h.get("strategy", "Resource"),
+
+    model_source = m.get("source", "pytorch")
+    if model_source not in ["onnx", "pytorch", "tensorflow"]:
+        warnings.warn(f"Unknown model source '{model_source}', expected one of ['onnx', 'pytorch', 'tensorflow']")
+    
+    if model_source == "tensorflow":
+        hls_config: HLSCONFIG = hls4ml.utils.config_from_keras(
+            model, 
+            granularity="model", 
+            backend=h.get("backend", "Vitis"),
+            default_reuse_factor=int(h.get("reuse_factor", 1)),
+            default_precision=h.get("precision", "ap_fixed<16,6>"),
+        )
+    elif model_source == "pytorch":
+        hls_config: HLSCONFIG = hls4ml.utils.config_from_pytorch(
+            model, 
+            granularity="model", 
+            backend=h.get("backend", "Vitis"),
+            default_reuse_factor=int(h.get("reuse_factor", 1)),
+            default_precision=h.get("precision", "ap_fixed<16,6>"),
+        )
+    elif model_source == "onnx":
+        hls_config: HLSCONFIG = hls4ml.utils.config_from_onnx(
+            model, 
+            granularity="model", 
+            backend=h.get("backend", "Vitis"),
+            default_reuse_factor=int(h.get("reuse_factor", 1)),
+            default_precision=h.get("precision", "ap_fixed<16,6>"),
+        )
+    else:
+        hls_config: Dict[str, Any] = {
+            "Model": {
+                "Precision": h.get("precision", "ap_fixed<16,6>"),
+                "ReuseFactor": int(h.get("reuse_factor", 1)),
+                "Strategy": h.get("strategy", "Resource"),
+                "TraceOutput": bool(h.get("trace_output", False)),
+                "BramFactor": int(h.get("bram_factor", 1000000000)),
+                "BitExact": h.get("bit_exact", None)
+            }
         }
-    }
+        if hls_config["Model"]["BitExact"] is "None" and hls_config["Model"]["BitExact"] is not None:
+            warnings.warn(f"BitExact is set to the string 'None'. Recasting as NoneType.")
+            hls_config["Model"]["BitExact"] = None
 
     # Optional per-layer overrides
     layer_precision = h.get("layer_precision", {}) or {}
@@ -49,6 +97,27 @@ def _build_hls_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
     return hls_config
 
 
+def _build_steps(cfg: Dict[str, Any]) -> Dict[str, bool]:
+    build_cfg = cfg.get("build", {}) or {}
+    return {
+        "csim": bool(build_cfg.get("csim", True)),
+        "synth": bool(build_cfg.get("synth", True)),
+        "cosim": bool(build_cfg.get("cosim", False)),
+        "export": bool(build_cfg.get("export", False)),
+        "bitfile": bool(build_cfg.get("bitfile", False)),
+    }
+
+
+def _plot_model(hls_model: Any, cfg: Dict[str, Any]) -> None:
+    out_path = cfg.get("plot_model", "nn/outputs/hls4ml_model_structure.png")
+    hls_model.plot_model(
+        show_shapes=True,
+        show_precision=True,
+        to_file=str(Path(out_path).resolve()),
+    )
+
+
+
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True, help="YAML hls4ml config file")
@@ -58,16 +127,11 @@ def main() -> int:
 
     cfg = _load_config(args.config)
     model_cfg = cfg["model"]
-    source = model_cfg.get("source", "onnx")
+    source = model_cfg.get("source", "pytorch")
     onnx_path = Path(model_cfg.get("onnx_path", "")).resolve()
     out_dir = Path(model_cfg["output_dir"]).resolve()
 
-    try:
-        import hls4ml  # type: ignore
-    except Exception as exc:  # pragma: no cover - environment-dependent
-        raise RuntimeError("hls4ml is not installed in this environment") from exc
-
-    hls_config = _build_hls_config(cfg)
+    hls_config: HLSCONFIG = _build_hls_config(cfg)
 
     hls_kwargs = {
         "backend": cfg["hls4ml"].get("backend", "Vitis"),       # Vivado 2025.2 lacks vivado_hls support
@@ -84,14 +148,12 @@ def main() -> int:
         print("hls4ml kwargs:")
         print(yaml.dump(hls_kwargs, sort_keys=False))   
 
+    # === Model conversion ===
     if source == "onnx":
         hls_model = hls4ml.converters.convert_from_onnx_model(
             str(onnx_path), hls_config=hls_config, output_dir=str(out_dir), **hls_kwargs
         )
     elif source == "pytorch":
-        from nn.models import mlp_regressor
-        import torch
-        import json
 
         pt_cfg = model_cfg["pytorch"]
         input_dim = int(pt_cfg.get("input_dim", 0))
@@ -121,30 +183,71 @@ def main() -> int:
             output_dir=str(out_dir),
             **hls_kwargs,
         )
+    elif source == "tensorflow":
+        raise NotImplementedError("TensorFlow model conversion not implemented yet")
     else:
         raise ValueError(f"unknown model.source: {source}")
 
     # Always emit project files
     hls_model.write()
 
+    _plot_model(hls_model, cfg["hls4ml"])
+
     if args.build:
         backend = cfg["hls4ml"].get("backend", "Vitis")
+        build_steps = _build_steps(cfg)
+        build_cfg = cfg.get("build", {}) or {}
+        driver = build_cfg.get("driver", "hls4ml")
         build_tcl = out_dir / "build_prj.tcl"
+        extra_build_args = build_cfg.get("extra", {}) or {}
+
         if backend.lower() == "vitis" and cfg["hls4ml"].get("vitis_patch_array_partition", True):
             if build_tcl.exists():
                 lines = build_tcl.read_text().splitlines()
                 lines = [ln for ln in lines if "config_array_partition -maximum_size" not in ln]
                 build_tcl.write_text("\n".join(lines) + "\n")
 
-        if backend.lower() == "vitis":
-            runner = cfg["hls4ml"].get("vitis_runner", "vitis-run")  # nominally vitis-run, but vitis_hls in older versions
-            if runner == "vitis-run":
-                cmd = [runner, "--mode", "hls", "--tcl", str(build_tcl)]
-            else:
-                cmd = [runner, "-f", str(build_tcl)]
-            subprocess.run(cmd, cwd=str(out_dir), check=True)
+        if driver == "hls4ml":
+            build_kwargs = {
+                "csim": build_steps["csim"],
+                "synth": build_steps["synth"],
+                "cosim": build_steps["cosim"],
+                "export": build_steps["export"],
+            }
+            # Vitis backend does not accept bitfile kwarg
+            if backend.lower() != "vitis":
+                build_kwargs["bitfile"] = build_steps["bitfile"]
+            build_kwargs.update(extra_build_args)
+            hls_model.build(**build_kwargs)
         else:
-            hls_model.build(csim=True, synth=True)
+            if backend.lower() == "vitis":
+                runner = cfg["hls4ml"].get("vitis_runner", "vitis-run")  # nominally vitis-run, but vitis_hls in older versions
+                if runner == "vitis-run":
+                    cmd = [runner, "--mode", "hls", "--tcl", str(build_tcl)]
+                else:
+                    cmd = [runner, "-f", str(build_tcl)]
+                subprocess.run(cmd, cwd=str(out_dir), check=True)
+            else:
+                build_kwargs = {
+                    "csim": build_steps["csim"],
+                    "synth": build_steps["synth"],
+                    "cosim": build_steps["cosim"],
+                    "export": build_steps["export"],
+                }
+                if backend.lower() != "vitis":
+                    build_kwargs["bitfile"] = build_steps["bitfile"]
+                hls_model.build(**build_kwargs)
+
+        report_cfg = cfg.get("report", {}) or {}
+        if report_cfg.get("enable", False):
+            try:
+                report = hls4ml.report.read_vivado_report(str(out_dir))
+            except Exception as exc:
+                print(f"warning: could not read HLS report: {exc}")
+            else:
+                out_json = report_cfg.get("out_json", "")
+                if out_json:
+                    Path(out_json).write_text(json.dumps(report, indent=2))
 
     print(f"hls4ml project generated at: {out_dir}")
     return 0

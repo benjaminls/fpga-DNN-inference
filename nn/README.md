@@ -56,6 +56,12 @@ Generate an hls4ml project from ONNX or PyTorch:
 python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml
 ```
 
+Run the full HLS flow (C sim + synth + export), using hls4ml's build helpers:
+
+```bash
+python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --build
+```
+
 Key YAML knobs:
 - `model.source` (`onnx` or `pytorch`)
 - `hls4ml.reuse_factor`
@@ -63,3 +69,7 @@ Key YAML knobs:
 - `hls4ml.strategy`
 - `hls4ml.layer_precision` / `hls4ml.layer_reuse`
 - `hls4ml.backend`, `hls4ml.part`, `hls4ml.clock_period`, `hls4ml.io_type`
+- `build.driver` (`hls4ml`, `vitis-run`, `vitis_hls`)
+- `build.csim` / `build.synth` / `build.cosim` / `build.export` / `build.bitfile`
+- `build.extra` (optional dict of additional `hls_model.build(...)` kwargs)
+- `report.enable` and `report.out_json`

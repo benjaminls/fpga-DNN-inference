@@ -1,6 +1,6 @@
 # Example hls4ml configuration for calhouse model (edit as needed)
 model:
-  source: pytorch  # onnx | pytorch
+  source: pytorch  # onnx | pytorch | tensorflow
   onnx_path: nn/outputs/calhouse/default/model.onnx
   output_dir: nn/outputs/calhouse/default/hls4ml
   pytorch:
@@ -13,16 +13,35 @@ model:
 hls4ml:
   backend: Vitis
   vitis_runner: vitis-run
+  flow_target: vitis
   part: xc7a200tsbg484-1
   clock_period: 10.0
   io_type: io_stream
   strategy: Resource
   reuse_factor: 1
   precision: ap_fixed<16,6>
+  trace_output: false
+  bram_factor: 1000000000
+  bit_exact: None
   # Optional per-layer overrides
   layer_precision: {}
   layer_reuse: {}
   vitis_patch_array_partition: true # False reverts default hls4ml build routine, may see "config_array_partition" unknown option error
+  plot_model: nn/outputs/calhouse/default/hls4ml/model_structure.png
+
+build:
+  # hls4ml | vitis-run | vitis_hls
+  driver: hls4ml
+  csim: true
+  synth: true
+  cosim: true
+  export: true
+  bitfile: false
+  extra: {}
+
+report:
+  enable: true
+  out_json: nn/outputs/calhouse/default/hls4ml/hls_report.json
 
 quantization:
   enabled: false
