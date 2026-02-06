@@ -27,6 +27,7 @@ if str(ROOT) not in sys.path:
 
 # now we can import from nn
 from nn.models import mlp_regressor
+from nn.utils import compile as compile_mod
 
 HLSCONFIG = Dict[str, Any]
 MODEL = Union[torch.nn.Module, tf.keras.Model, onnx.ModelProto]
@@ -176,6 +177,60 @@ def _build_steps(cfg: Dict[str, Any]) -> Dict[str, bool]:
     }
 
 
+def _resolve_build_steps(args: argparse.Namespace, cfg: Dict[str, Any], backend: str) -> Dict[str, bool]:
+    has_flag = any([args.csim, args.synth, args.cosim, args.export, args.bitfile, args.all])
+    steps = _build_steps(cfg)
+    if args.all:
+        steps.update({"csim": True, "synth": True, "cosim": True, "export": True, "bitfile": True})
+    elif has_flag:
+        steps.update(
+            {
+                "csim": args.csim,
+                "synth": args.synth,
+                "cosim": args.cosim,
+                "export": args.export,
+                "bitfile": args.bitfile,
+            }
+        )
+    if backend.lower() == "vitis" and steps["bitfile"]:
+        raise ValueError("bitfile is not supported by the Vitis backend")
+    return steps
+
+
+def _run_build_with_hls4ml(
+    hls_model: Any, steps: Dict[str, bool], backend: str, extra_build_args: Dict[str, Any]
+) -> None:
+    build_kwargs = {
+        "csim": steps["csim"],
+        "synth": steps["synth"],
+        "cosim": steps["cosim"],
+        "export": steps["export"],
+    }
+    if backend.lower() != "vitis":
+        build_kwargs["bitfile"] = steps["bitfile"]
+    build_kwargs.update(extra_build_args)
+    hls_model.build(**build_kwargs)
+
+
+def _patch_vitis_tcl(build_tcl: Path, enabled: bool) -> None:
+    if not enabled or not build_tcl.exists():
+        return
+    lines = build_tcl.read_text().splitlines()
+    lines = [ln for ln in lines if "config_array_partition -maximum_size" not in ln]
+    build_tcl.write_text("\n".join(lines) + "\n")
+
+
+def _run_build_with_tool(build_tcl: Path, backend: str, runner: str, out_dir: Path) -> None:
+    if backend.lower() != "vitis":
+        subprocess.run([runner, "-f", str(build_tcl)], cwd=str(out_dir), check=True)
+        return
+    if runner == "vitis-run":
+        cmd = [runner, "--mode", "hls", "--tcl", str(build_tcl)]
+    else:
+        cmd = [runner, "-f", str(build_tcl)]
+    subprocess.run(cmd, cwd=str(out_dir), check=True)
+
+
 def _plot_model(hls_model: Any, cfg: Dict[str, Any]) -> None:
     out_path = cfg.get("plot_model", "nn/outputs/hls4ml_model_structure.png")
     # hls_model.plot_model(
@@ -191,7 +246,16 @@ def _plot_model(hls_model: Any, cfg: Dict[str, Any]) -> None:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True, help="YAML hls4ml config file")
-    ap.add_argument("--build", action="store_true", help="Run HLS build")
+    ap.add_argument("--build", action="store_true", help="Run HLS build with config defaults")
+    ap.add_argument("--csim", action="store_true", help="Run C simulation only")
+    ap.add_argument("--synth", action="store_true", help="Run synthesis only")
+    ap.add_argument("--cosim", action="store_true", help="Run C/RTL cosim")
+    ap.add_argument("--export", action="store_true", help="Export HLS IP")
+    ap.add_argument("--bitfile", action="store_true", help="Generate bitfile (non-Vitis backends only)")
+    ap.add_argument("--all", action="store_true", help="Run all build steps")
+    compare_group = ap.add_mutually_exclusive_group()
+    compare_group.add_argument("--compare", action="store_true", help="Run hls4ml vs PyTorch comparison")
+    compare_group.add_argument("--no-compare", action="store_true", help="Disable comparison even if config enables it")
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -253,50 +317,24 @@ def main() -> int:
 
     _plot_model(hls_model, cfg["hls4ml"])
 
-    if args.build:
-        backend = cfg["hls4ml"].get("backend", "Vitis")
-        build_steps = _build_steps(cfg)
+    backend = cfg["hls4ml"].get("backend", "Vitis")
+    build_requested = args.build or args.all or args.csim or args.synth or args.cosim or args.export or args.bitfile
+    if build_requested:
         build_cfg = cfg.get("build", {}) or {}
         driver = build_cfg.get("driver", "hls4ml")
         build_tcl = out_dir / "build_prj.tcl"
         extra_build_args = build_cfg.get("extra", {}) or {}
+        build_steps = _resolve_build_steps(args, cfg, backend)
 
-        if backend.lower() == "vitis" and cfg["hls4ml"].get("vitis_patch_array_partition", True):
-            if build_tcl.exists():
-                lines = build_tcl.read_text().splitlines()
-                lines = [ln for ln in lines if "config_array_partition -maximum_size" not in ln]
-                build_tcl.write_text("\n".join(lines) + "\n")
+        _patch_vitis_tcl(
+            build_tcl, enabled=backend.lower() == "vitis" and cfg["hls4ml"].get("vitis_patch_array_partition", True)
+        )
 
         if driver == "hls4ml":
-            build_kwargs = {
-                "csim": build_steps["csim"],
-                "synth": build_steps["synth"],
-                "cosim": build_steps["cosim"],
-                "export": build_steps["export"],
-            }
-            # Vitis backend does not accept bitfile kwarg
-            if backend.lower() != "vitis":
-                build_kwargs["bitfile"] = build_steps["bitfile"]
-            build_kwargs.update(extra_build_args)
-            hls_model.build(**build_kwargs)
+            _run_build_with_hls4ml(hls_model, build_steps, backend, extra_build_args)
         else:
-            if backend.lower() == "vitis":
-                runner = cfg["hls4ml"].get("vitis_runner", "vitis-run")  # nominally vitis-run, but vitis_hls in older versions
-                if runner == "vitis-run":
-                    cmd = [runner, "--mode", "hls", "--tcl", str(build_tcl)]
-                else:
-                    cmd = [runner, "-f", str(build_tcl)]
-                subprocess.run(cmd, cwd=str(out_dir), check=True)
-            else:
-                build_kwargs = {
-                    "csim": build_steps["csim"],
-                    "synth": build_steps["synth"],
-                    "cosim": build_steps["cosim"],
-                    "export": build_steps["export"],
-                }
-                if backend.lower() != "vitis":
-                    build_kwargs["bitfile"] = build_steps["bitfile"]
-                hls_model.build(**build_kwargs)
+            runner = cfg["hls4ml"].get("vitis_runner", "vitis-run")
+            _run_build_with_tool(build_tcl, backend, runner, out_dir)
 
         report_cfg = cfg.get("report", {}) or {}
         if report_cfg.get("enable", False):
@@ -308,6 +346,11 @@ def main() -> int:
                 out_json = report_cfg.get("out_json", "")
                 if out_json:
                     Path(out_json).write_text(json.dumps(report, indent=2))
+
+    predict_cfg = cfg.get("predict", {}) or {}
+    compare_requested = args.compare or (predict_cfg.get("enable", False) and not args.no_compare)
+    if compare_requested:
+        compile_mod.compile_and_compare(hls_model, cfg)
 
     print(f"hls4ml project generated at: {out_dir}")
     return 0

@@ -43,6 +43,10 @@ report:
   enable: true
   out_json: nn/outputs/calhouse/default/hls4ml/hls_report.json
 
+predict:
+  enable: false
+  training_config: nn/configs/calhouse.yaml
+
 quantization:
   enabled: false
 

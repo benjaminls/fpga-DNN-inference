@@ -62,6 +62,20 @@ Run the full HLS flow (C sim + synth + export), using hls4ml's build helpers:
 python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --build
 ```
 
+Optionally compile the hls4ml model and compare predictions with PyTorch:
+
+```bash
+python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --compare
+```
+
+Run a single build step (overrides config defaults):
+
+```bash
+python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --csim
+python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --synth
+python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --all
+```
+
 Key YAML knobs:
 - `model.source` (`onnx` or `pytorch`)
 - `hls4ml.reuse_factor`
@@ -73,3 +87,4 @@ Key YAML knobs:
 - `build.csim` / `build.synth` / `build.cosim` / `build.export` / `build.bitfile`
 - `build.extra` (optional dict of additional `hls_model.build(...)` kwargs)
 - `report.enable` and `report.out_json`
+- `predict.enable` and `predict.training_config`
