@@ -23,6 +23,7 @@
 *.sim
 *.srcs
 build/
+xsim.*
 
 # Python
 __pycache__/
@@ -31,8 +32,12 @@ __pycache__/
 *.egg-info/
 .venv/
 
-# OS
-.DS_Store
-.local/
+# Neural network outputs and datasets
 nn/outputs/
 nn/**/dataset/*.zip
+
+# OS
+.DS_Store
+
+# Development
+.local/
