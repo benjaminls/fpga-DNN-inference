@@ -12,3 +12,4 @@ Pure-RTL (VHDL) NN inference pipeline targeting the Digilent Nexys Video.
 - `scripts/`: build/sim helpers
 - `sim/`: testbenches and fixtures
 - `host/python/`: host-side tooling
+- `nn`: train DNN, generate hls4ml rtl
