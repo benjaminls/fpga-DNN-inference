@@ -1,4 +1,4 @@
-# Example hls4ml configuration for calhouse model
+# Example hls4ml configuration for calhouse model (edit as needed)
 model:
   source: pytorch  # onnx | pytorch
   onnx_path: nn/outputs/calhouse/default/model.onnx
@@ -12,6 +12,7 @@ model:
 
 hls4ml:
   backend: Vitis
+  vitis_runner: vitis-run
   part: xc7a200tsbg484-1
   clock_period: 10.0
   io_type: io_stream
@@ -21,6 +22,7 @@ hls4ml:
   # Optional per-layer overrides
   layer_precision: {}
   layer_reuse: {}
+  vitis_patch_array_partition: true # False reverts default hls4ml build routine, may see "config_array_partition" unknown option error
 
 quantization:
   enabled: false

@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Dict
 import sys
 import os
+import subprocess
 
 import yaml
 
@@ -15,7 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-# Ensure Vitis binaries are on PATH if XILINX_VITIS is set.
+# Ensure Vitis binaries are on PATH if XILINX_VITIS is set (possibly unnecessary)
 if "XILINX_VITIS" in os.environ:
     os.environ["PATH"] = os.environ["XILINX_VITIS"] + "/bin:" + os.environ["PATH"]
 
@@ -51,7 +52,7 @@ def _build_hls_config(cfg: Dict[str, Any]) -> Dict[str, Any]:
 def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--config", required=True, help="YAML hls4ml config file")
-    ap.add_argument("--build", action="store_true", help="Run HLS build (requires vivado_hls on PATH)")
+    ap.add_argument("--build", action="store_true", help="Run HLS build")
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
 
@@ -74,6 +75,9 @@ def main() -> int:
         "clock_period": float(cfg["hls4ml"].get("clock_period", 10.0)), # ns
         "io_type": cfg["hls4ml"].get("io_type", "io_stream"),
     }
+    if "flow_target" in cfg["hls4ml"]:
+        hls_kwargs["flow_target"] = cfg["hls4ml"]["flow_target"]
+
     if args.verbose:
         print(f"hls4ml config ({args.config}):")
         print(yaml.dump(hls_config, sort_keys=False))
@@ -120,11 +124,27 @@ def main() -> int:
     else:
         raise ValueError(f"unknown model.source: {source}")
 
-    hls_model.compile()
+    # Always emit project files
+    hls_model.write()
 
     if args.build:
-        # Build project (C-sim + HLS)
-        hls_model.build(csim=True, synth=True)
+        backend = cfg["hls4ml"].get("backend", "Vitis")
+        build_tcl = out_dir / "build_prj.tcl"
+        if backend.lower() == "vitis" and cfg["hls4ml"].get("vitis_patch_array_partition", True):
+            if build_tcl.exists():
+                lines = build_tcl.read_text().splitlines()
+                lines = [ln for ln in lines if "config_array_partition -maximum_size" not in ln]
+                build_tcl.write_text("\n".join(lines) + "\n")
+
+        if backend.lower() == "vitis":
+            runner = cfg["hls4ml"].get("vitis_runner", "vitis-run")  # nominally vitis-run, but vitis_hls in older versions
+            if runner == "vitis-run":
+                cmd = [runner, "--mode", "hls", "--tcl", str(build_tcl)]
+            else:
+                cmd = [runner, "-f", str(build_tcl)]
+            subprocess.run(cmd, cwd=str(out_dir), check=True)
+        else:
+            hls_model.build(csim=True, synth=True)
 
     print(f"hls4ml project generated at: {out_dir}")
     return 0
