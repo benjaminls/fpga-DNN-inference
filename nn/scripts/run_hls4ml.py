@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any, Dict
+from typing import Any, Dict, Union
 import sys
 import os
 import subprocess
@@ -13,19 +13,23 @@ import json
 import yaml
 import warnings
 
+import tensorflow as tf
 import torch
+import onnx
 try:
     import hls4ml  # type: ignore
 except Exception as exc:  # pragma: no cover - environment-dependent
     raise RuntimeError("hls4ml is not installed in this environment") from exc
 
-from nn.models import mlp_regressor
-
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
+# now we can import from nn
+from nn.models import mlp_regressor
+
 HLSCONFIG = Dict[str, Any]
+MODEL = Union[torch.nn.Module, tf.keras.Model, onnx.ModelProto]
 
 # Ensure Vitis binaries are on PATH if XILINX_VITIS is set (possibly unnecessary)
 if "XILINX_VITIS" in os.environ:
@@ -35,6 +39,69 @@ if "XILINX_VITIS" in os.environ:
 def _load_config(path: str | Path) -> Dict[str, Any]:
     with Path(path).open("r", encoding="utf-8") as f:
         return yaml.safe_load(f)
+
+def _get_input_dim(cfg: Dict[str, Any]) -> int:
+    """Determine input dimension from config, either from model_info or pytorch section."""
+    m = cfg["model"]
+    if "model_info" in m:
+        info_path = Path(m["model_info"]).resolve()
+        if not info_path.exists():
+            raise FileNotFoundError(f"model_info set in config but info json file not found: {info_path}")
+        info = json.loads(info_path.read_text())
+        input_dim = int(info.get("input_dim", 0))
+        if input_dim <= 0:
+            raise ValueError("input_dim must be > 0 in model_info")
+        return input_dim
+    elif "pytorch" in m:
+        pt_cfg = m["pytorch"]
+        input_dim = int(pt_cfg.get("input_dim", 0))
+        if input_dim <= 0:
+            raise ValueError("pytorch.input_dim must be set and > 0 if using PyTorch model source")
+        return input_dim
+    else:
+        raise ValueError("Cannot determine input dimension: no model_info or pytorch section in config")
+
+def _build_model(cfg: Dict[str, Any]) -> MODEL:
+    """Return {TF,pytorch,onnx} model object immediately usable for inference or hls4ml conversion."""
+    m = cfg["model"]
+    source = m.get("source", "pytorch")
+    if source == "onnx":
+        onnx_path = Path(m["onnx_path"]).resolve()
+        if not onnx_path.exists():
+            raise FileNotFoundError(f"ONNX model file not found: {onnx_path}")
+        return onnx.load(str(onnx_path))
+    elif source == "pytorch":
+        pt_cfg = m["pytorch"]
+        # input_dim = int(pt_cfg.get("input_dim", 0)) # we get this from dedicated function now
+        hidden = pt_cfg.get("hidden", [])
+        dropout = float(pt_cfg.get("dropout", 0.0))
+        checkpoint = Path(pt_cfg["checkpoint"]).resolve()
+        info_path = pt_cfg.get("model_info", "")
+
+        # If model_info set in config, then use it instead
+        if info_path:
+            info_path = Path(info_path).resolve()
+            if not info_path.exists():
+                raise FileNotFoundError(f"model_info set in config but info json file not found: {info_path}")
+            info = json.loads(info_path.read_text())
+            # input_dim = int(info.get("input_dim", input_dim)) # override
+            hidden = info.get("hidden", hidden) # override
+
+        input_dim = _get_input_dim(cfg)
+
+        if input_dim <= 0 or not hidden:
+            raise ValueError("pytorch.input_dim and pytorch.hidden must be set (or provide model_info)")
+        if not checkpoint.exists():
+            raise FileNotFoundError(f"PyTorch checkpoint not found ({checkpoint}). Needed to load model weights for hls4ml conversion, even if not training.")
+
+        model = mlp_regressor.build_mlp(input_dim=input_dim, hidden=hidden, dropout=dropout)
+        model.load_state_dict(torch.load(checkpoint, map_location="cpu"))
+        model.eval()
+        return model
+    elif source == "tensorflow":
+        raise NotImplementedError("TensorFlow model loading not implemented yet")
+    else:
+        raise ValueError(f"unknown model.source: {source}")
 
 
 def _build_hls_config(model: Any, cfg: Dict[str, Any]) -> Dict[str, Any]:
@@ -46,7 +113,7 @@ def _build_hls_config(model: Any, cfg: Dict[str, Any]) -> Dict[str, Any]:
         warnings.warn(f"Unknown model source '{model_source}', expected one of ['onnx', 'pytorch', 'tensorflow']")
     
     if model_source == "tensorflow":
-        hls_config: HLSCONFIG = hls4ml.utils.config_from_keras(
+        hls_config: HLSCONFIG = hls4ml.utils.config_from_keras_model(
             model, 
             granularity="model", 
             backend=h.get("backend", "Vitis"),
@@ -54,15 +121,16 @@ def _build_hls_config(model: Any, cfg: Dict[str, Any]) -> Dict[str, Any]:
             default_precision=h.get("precision", "ap_fixed<16,6>"),
         )
     elif model_source == "pytorch":
-        hls_config: HLSCONFIG = hls4ml.utils.config_from_pytorch(
+        hls_config: HLSCONFIG = hls4ml.utils.config_from_pytorch_model(
             model, 
+            input_shape=(_get_input_dim(cfg),),  # hls4ml needs input shape to convert PyTorch models
             granularity="model", 
             backend=h.get("backend", "Vitis"),
             default_reuse_factor=int(h.get("reuse_factor", 1)),
             default_precision=h.get("precision", "ap_fixed<16,6>"),
         )
     elif model_source == "onnx":
-        hls_config: HLSCONFIG = hls4ml.utils.config_from_onnx(
+        hls_config: HLSCONFIG = hls4ml.utils.config_from_onnx_model(
             model, 
             granularity="model", 
             backend=h.get("backend", "Vitis"),
@@ -80,7 +148,7 @@ def _build_hls_config(model: Any, cfg: Dict[str, Any]) -> Dict[str, Any]:
                 "BitExact": h.get("bit_exact", None)
             }
         }
-        if hls_config["Model"]["BitExact"] is "None" and hls_config["Model"]["BitExact"] is not None:
+        if hls_config["Model"]["BitExact"] == "None" and hls_config["Model"]["BitExact"] != None:
             warnings.warn(f"BitExact is set to the string 'None'. Recasting as NoneType.")
             hls_config["Model"]["BitExact"] = None
 
@@ -110,7 +178,9 @@ def _build_steps(cfg: Dict[str, Any]) -> Dict[str, bool]:
 
 def _plot_model(hls_model: Any, cfg: Dict[str, Any]) -> None:
     out_path = cfg.get("plot_model", "nn/outputs/hls4ml_model_structure.png")
-    hls_model.plot_model(
+    # hls_model.plot_model(
+    hls4ml.utils.plot_model(
+        hls_model,
         show_shapes=True,
         show_precision=True,
         to_file=str(Path(out_path).resolve()),
@@ -131,7 +201,6 @@ def main() -> int:
     onnx_path = Path(model_cfg.get("onnx_path", "")).resolve()
     out_dir = Path(model_cfg["output_dir"]).resolve()
 
-    hls_config: HLSCONFIG = _build_hls_config(cfg)
 
     hls_kwargs = {
         "backend": cfg["hls4ml"].get("backend", "Vitis"),       # Vivado 2025.2 lacks vivado_hls support
@@ -143,38 +212,29 @@ def main() -> int:
         hls_kwargs["flow_target"] = cfg["hls4ml"]["flow_target"]
 
     if args.verbose:
-        print(f"hls4ml config ({args.config}):")
-        print(yaml.dump(hls_config, sort_keys=False))
         print("hls4ml kwargs:")
         print(yaml.dump(hls_kwargs, sort_keys=False))   
+    
+    # === Build TF/PyTorch/ONNX model ===
+    model: MODEL = _build_model(cfg)
+
+    # === Build HLS config ===
+    hls_config: HLSCONFIG = _build_hls_config(model, cfg)
+    if args.verbose:
+        print(f"hls4ml config ({args.config}):")
+        print(yaml.dump(hls_config, sort_keys=False))
 
     # === Model conversion ===
     if source == "onnx":
         hls_model = hls4ml.converters.convert_from_onnx_model(
-            str(onnx_path), hls_config=hls_config, output_dir=str(out_dir), **hls_kwargs
+            str(onnx_path),             # load ONNX model from file path instead of in-memory object
+            hls_config=hls_config, 
+            output_dir=str(out_dir), 
+            **hls_kwargs
         )
     elif source == "pytorch":
-
-        pt_cfg = model_cfg["pytorch"]
-        input_dim = int(pt_cfg.get("input_dim", 0))
-        hidden = pt_cfg.get("hidden", [])
-        dropout = float(pt_cfg.get("dropout", 0.0))
-        checkpoint = Path(pt_cfg["checkpoint"]).resolve()
-        info_path = pt_cfg.get("model_info", "")
-
-        if info_path:
-            info = json.loads(Path(info_path).read_text())
-            input_dim = int(info.get("input_dim", input_dim))
-            hidden = info.get("hidden", hidden)
-
-        if input_dim <= 0 or not hidden:
-            raise ValueError("pytorch.input_dim and pytorch.hidden must be set (or provide model_info)")
-
-        model = mlp_regressor.build_mlp(input_dim=input_dim, hidden=hidden, dropout=dropout)
-        model.load_state_dict(torch.load(checkpoint, map_location="cpu"))
-        model.eval()
-
         # hls4ml expects InputShape for PyTorch models
+        input_dim = _get_input_dim(cfg)
         hls_config["InputShape"] = [(input_dim,)]
 
         hls_model = hls4ml.converters.convert_from_pytorch_model(

@@ -8,6 +8,8 @@ import torch
 from torch import nn
 
 
+# TODO: add batchnorm, activations, etc. as options
+# TODO: add tensorflow/keras switching or different function
 def build_mlp(input_dim: int, hidden: List[int], dropout: float = 0.0) -> nn.Module:
     layers: List[nn.Module] = []
     prev = input_dim
