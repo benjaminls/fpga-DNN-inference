@@ -1,0 +1,29 @@
+# Example hls4ml configuration for calhouse model
+model:
+  source: pytorch  # onnx | pytorch
+  onnx_path: nn/outputs/calhouse/default/model.onnx
+  output_dir: nn/outputs/calhouse/default/hls4ml
+  pytorch:
+    checkpoint: nn/outputs/calhouse/default/model.pt
+    model_info: nn/outputs/calhouse/default/model_info.json
+    input_dim: 8
+    hidden: [64, 64]
+    dropout: 0.0
+
+hls4ml:
+  backend: Vitis
+  part: xc7a200tsbg484-1
+  clock_period: 10.0
+  io_type: io_stream
+  strategy: Resource
+  reuse_factor: 1
+  precision: ap_fixed<16,6>
+  # Optional per-layer overrides
+  layer_precision: {}
+  layer_reuse: {}
+
+quantization:
+  enabled: false
+
+pruning:
+  enabled: false

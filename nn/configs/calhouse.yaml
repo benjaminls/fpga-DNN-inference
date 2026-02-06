@@ -1,0 +1,30 @@
+dataset:
+  name: calhouse
+  zip_path: nn/calhouse/dataset/california-housing-prices.zip
+  features: ["longitude", "latitude", "housing_median_age", "total_rooms", "total_bedrooms", "population", "households", "median_income"]
+  target: "median_house_value"
+  split: [0.8, 0.1, 0.1]
+  normalize: standard
+
+model:
+  type: mlp
+  hidden: [16, 32]
+  dropout: 0.0
+
+training:
+  epochs: 100
+  batch_size: 128
+  lr: 0.001
+  weight_decay: 0.0
+  seed: 42
+
+metrics:
+  primary: [mae, rmse]
+  secondary: [r2]
+
+export:
+  onnx: true
+  hls4ml_stub: true
+
+outputs:
+  dir: nn/outputs/calhouse/default

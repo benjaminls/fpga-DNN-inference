@@ -34,3 +34,5 @@ __pycache__/
 # OS
 .DS_Store
 .local/
+nn/outputs/
+nn/**/dataset/*.zip
