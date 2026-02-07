@@ -76,6 +76,19 @@ python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --synth
 python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --all
 ```
 
+Write project files only or plot the topology:
+
+```bash
+python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --write-only
+python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --plot-model
+```
+
+Read and print the HLS report without rebuilding:
+
+```bash
+python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --report
+```
+
 Key YAML knobs:
 - `model.source` (`onnx` or `pytorch`)
 - `hls4ml.reuse_factor`

@@ -13,13 +13,19 @@ import json
 import yaml
 import warnings
 
-import tensorflow as tf
+try:
+    import tensorflow as tf
+except Exception:  # pragma: no cover - optional dependency
+    tf = None
 import torch
-import onnx
+try:
+    import onnx
+except Exception:  # pragma: no cover - optional dependency
+    onnx = None
 try:
     import hls4ml  # type: ignore
 except Exception as exc:  # pragma: no cover - environment-dependent
-    raise RuntimeError("hls4ml is not installed in this environment") from exc
+    raise RuntimeError("hls4ml is not installed in this environment") from exc # actually need this
 
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
@@ -30,7 +36,9 @@ from nn.models import mlp_regressor
 from nn.utils import compile as compile_mod
 
 HLSCONFIG = Dict[str, Any]
-MODEL = Union[torch.nn.Module, tf.keras.Model, onnx.ModelProto]
+_TFModel = Any if tf is None else tf.keras.Model
+_ONNXModel = Any if onnx is None else onnx.ModelProto
+MODEL = Union[torch.nn.Module, _TFModel, _ONNXModel]
 
 # Ensure Vitis binaries are on PATH if XILINX_VITIS is set (possibly unnecessary)
 if "XILINX_VITIS" in os.environ:
@@ -67,6 +75,8 @@ def _build_model(cfg: Dict[str, Any]) -> MODEL:
     m = cfg["model"]
     source = m.get("source", "pytorch")
     if source == "onnx":
+        if onnx is None:
+            raise RuntimeError("onnx is not installed; cannot load ONNX model")
         onnx_path = Path(m["onnx_path"]).resolve()
         if not onnx_path.exists():
             raise FileNotFoundError(f"ONNX model file not found: {onnx_path}")
@@ -100,6 +110,8 @@ def _build_model(cfg: Dict[str, Any]) -> MODEL:
         model.eval()
         return model
     elif source == "tensorflow":
+        if tf is None:
+            raise RuntimeError("tensorflow is not installed; cannot load TF model")
         raise NotImplementedError("TensorFlow model loading not implemented yet")
     else:
         raise ValueError(f"unknown model.source: {source}")
@@ -193,7 +205,8 @@ def _resolve_build_steps(args: argparse.Namespace, cfg: Dict[str, Any], backend:
             }
         )
     if backend.lower() == "vitis" and steps["bitfile"]:
-        raise ValueError("bitfile is not supported by the Vitis backend")
+        # Vitis backend does not support bitfile; drop it instead of failing on --all
+        steps["bitfile"] = False
     return steps
 
 
@@ -242,6 +255,10 @@ def _plot_model(hls_model: Any, cfg: Dict[str, Any]) -> None:
     )
 
 
+def _write_model(hls_model: Any) -> None:
+    hls_model.write()
+
+
 
 def main() -> int:
     ap = argparse.ArgumentParser()
@@ -253,11 +270,21 @@ def main() -> int:
     ap.add_argument("--export", action="store_true", help="Export HLS IP")
     ap.add_argument("--bitfile", action="store_true", help="Generate bitfile (non-Vitis backends only)")
     ap.add_argument("--all", action="store_true", help="Run all build steps")
+    ap.add_argument("--write-only", action="store_true", help="Only write hls4ml project files")
+    ap.add_argument("--plot-model", action="store_true", help="Plot the hls4ml model topology")
+    ap.add_argument("--report", action="store_true", help="Read HLS report only")
     compare_group = ap.add_mutually_exclusive_group()
     compare_group.add_argument("--compare", action="store_true", help="Run hls4ml vs PyTorch comparison")
     compare_group.add_argument("--no-compare", action="store_true", help="Disable comparison even if config enables it")
     ap.add_argument("--verbose", action="store_true")
     args = ap.parse_args()
+
+    if args.write_only and (args.build or args.all or args.csim or args.synth or args.cosim or args.export or args.bitfile):
+        raise ValueError("--write-only cannot be combined with build step flags")
+    if args.write_only and args.plot_model:
+        raise ValueError("--write-only cannot be combined with --plot-model")
+    if args.report and (args.build or args.all or args.csim or args.synth or args.cosim or args.export or args.bitfile):
+        raise ValueError("--report cannot be combined with build step flags")
 
     cfg = _load_config(args.config)
     model_cfg = cfg["model"]
@@ -312,13 +339,18 @@ def main() -> int:
     else:
         raise ValueError(f"unknown model.source: {source}")
 
-    # Always emit project files
-    hls_model.write()
-
-    _plot_model(hls_model, cfg["hls4ml"])
-
     backend = cfg["hls4ml"].get("backend", "Vitis")
     build_requested = args.build or args.all or args.csim or args.synth or args.cosim or args.export or args.bitfile
+    if args.write_only:
+        build_requested = False
+
+    # Emit project files unless user asked for plot-only (and no build requested)
+    if not (args.plot_model and not build_requested):
+        _write_model(hls_model)
+
+    if args.plot_model or cfg["hls4ml"].get("plot_model", None):
+        _plot_model(hls_model, cfg["hls4ml"])
+
     if build_requested:
         build_cfg = cfg.get("build", {}) or {}
         driver = build_cfg.get("driver", "hls4ml")
@@ -346,6 +378,18 @@ def main() -> int:
                 out_json = report_cfg.get("out_json", "")
                 if out_json:
                     Path(out_json).write_text(json.dumps(report, indent=2))
+
+    if args.report:
+        try:
+            report = hls4ml.report.read_vivado_report(str(out_dir))
+        except Exception as exc:
+            raise RuntimeError(f"could not read HLS report from {out_dir}: {exc}") from exc
+        else:
+            report_cfg = cfg.get("report", {}) or {}
+            out_json = report_cfg.get("out_json", "")
+            if out_json:
+                Path(out_json).write_text(json.dumps(report, indent=2))
+            print(json.dumps(report, indent=2))
 
     predict_cfg = cfg.get("predict", {}) or {}
     compare_requested = args.compare or (predict_cfg.get("enable", False) and not args.no_compare)
