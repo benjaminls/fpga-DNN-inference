@@ -11,7 +11,7 @@ def _limits(width: int, signed: bool) -> tuple[int, int]:
     return (0, (1 << width) - 1)
 
 
-def quantize(value: float, data_width: int = 16, frac_width: int = 8, signed: bool = True) -> int:
+def quantize(value: float, data_width: int = 16, frac_width: int = 10, signed: bool = True) -> int:
     """Quantize float to fixed-point integer with saturation."""
     scale = 1 << frac_width
     raw = int(round(value * scale))
@@ -26,7 +26,7 @@ def _to_twos(value: int, width: int) -> int:
 
 
 def pack_values(
-    values: Iterable[float], data_width: int = 16, frac_width: int = 8, signed: bool = True
+    values: Iterable[float], data_width: int = 16, frac_width: int = 10, signed: bool = True
 ) -> bytes:
     """Pack iterable of floats into little-endian fixed-point bytes."""
     out = bytearray()
@@ -49,7 +49,7 @@ def unpack_ints(payload: bytes, data_width: int = 16, signed: bool = True) -> Li
     return out
 
 
-def unpack_values(payload: bytes, data_width: int = 16, frac_width: int = 8, signed: bool = True) -> List[float]:
+def unpack_values(payload: bytes, data_width: int = 16, frac_width: int = 10, signed: bool = True) -> List[float]:
     """Unpack little-endian bytes into floats."""
     scale = 1 << frac_width
     ints = unpack_ints(payload, data_width=data_width, signed=signed)

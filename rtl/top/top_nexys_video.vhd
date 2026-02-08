@@ -134,7 +134,7 @@ begin
     );
 
   u_nn: entity work.hls4ml_wrap
-    generic map (G_DATA_WIDTH => 16, G_STUB => true)
+    generic map (G_DATA_WIDTH => 16, G_IN_DIM => 8, G_STUB => false)
     port map (
       clk => clk_100mhz,
       rst => rst,

@@ -36,6 +36,14 @@ __pycache__/
 nn/outputs/
 nn/**/dataset/*.zip
 
+# hls4ml RTL
+rtl/hls4ml_ip/
+rtl/nn/generated/
+
+# Simulation inputs and outputs (golden)
+sim/fixtures/nn_in.hex
+sim/fixtures/nn_out.hex
+
 # OS
 .DS_Store
 

@@ -89,6 +89,29 @@ Read and print the HLS report without rebuilding:
 python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --report
 ```
 
+Sync generated Verilog IP into the RTL tree for integration:
+
+```bash
+scripts/sync_hls4ml_ip.sh
+```
+
+## End-to-End Example
+The following sequence trains a model, generates an hls4ml project, syncs the RTL, and runs RTL tests:
+
+```bash
+python nn/scripts/run_training.py --config nn/configs/calhouse.yaml
+python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --all
+scripts/sync_hls4ml_ip.sh
+bash scripts/run_xsim_tests.sh
+```
+
+Optional checks:
+
+```bash
+python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --compare
+python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --report
+```
+
 Key YAML knobs:
 - `model.source` (`onnx` or `pytorch`)
 - `hls4ml.reuse_factor`

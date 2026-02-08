@@ -244,6 +244,50 @@ def _run_build_with_tool(build_tcl: Path, backend: str, runner: str, out_dir: Pa
     subprocess.run(cmd, cwd=str(out_dir), check=True)
 
 
+def _resolve_synth_report_path(hls_dir: Path, suffix: str) -> Path | None:
+    project_tcl = hls_dir / "project.tcl"
+    if not project_tcl.exists():
+        return None
+    project_name = None
+    backend_name = None
+    top_name = None
+    for line in project_tcl.read_text().splitlines():
+        if "set project_name" in line:
+            project_name = line.split('"')[-2]
+        if "set backend" in line:
+            backend_name = line.split('"')[-2]
+        if "set_top" in line:
+            parts = line.strip().split()
+            if len(parts) >= 2:
+                top_name = parts[-1]
+    if project_name is None:
+        return None
+    if top_name is None:
+        top_name = project_name
+    if backend_name and "accelerator" in backend_name:
+        project_name = f"{project_name}_axi"
+    prj_dir = hls_dir / f"{project_name}_prj"
+    if not prj_dir.exists():
+        return None
+    for sol_dir in prj_dir.iterdir():
+        if not sol_dir.is_dir():
+            continue
+        report_dir = sol_dir / "syn" / "report"
+        if not report_dir.exists():
+            continue
+        if top_name:
+            candidate = report_dir / f"{top_name}_csynth.{suffix}"
+            if candidate.exists():
+                return candidate
+        candidate = report_dir / f"csynth.{suffix}"
+        if candidate.exists():
+            return candidate
+        # Fallback: first csynth report in solution
+        for rpt in report_dir.glob(f"*_csynth.{suffix}"):
+            return rpt
+    return None
+
+
 def _plot_model(hls_model: Any, cfg: Dict[str, Any]) -> None:
     out_path = cfg.get("plot_model", "nn/outputs/hls4ml_model_structure.png")
     # hls_model.plot_model(
@@ -381,15 +425,31 @@ def main() -> int:
 
     if args.report:
         try:
-            report = hls4ml.report.read_vivado_report(str(out_dir))
+            report = hls4ml.report.parse_vivado_report(str(out_dir))
         except Exception as exc:
-            raise RuntimeError(f"could not read HLS report from {out_dir}: {exc}") from exc
+            raise RuntimeError(f"could not parse HLS report from {out_dir}: {exc}") from exc
+        if not report or "CSynthesisReport" not in report:
+            raise RuntimeError(
+                "synthesis report not found. Run with --synth (or --all) and ensure the HLS "
+                "project generated syn/report/*.xml."
+            )
+        report_cfg = cfg.get("report", {}) or {}
+        rpt_path = _resolve_synth_report_path(out_dir, "rpt")
+        xml_path = _resolve_synth_report_path(out_dir, "xml")
+        if rpt_path:
+            print(f"Synthesis report source: {rpt_path}")
         else:
-            report_cfg = cfg.get("report", {}) or {}
-            out_json = report_cfg.get("out_json", "")
-            if out_json:
-                Path(out_json).write_text(json.dumps(report, indent=2))
-            print(json.dumps(report, indent=2))
+            print(f"Synthesis report source: {out_dir}")
+        if args.verbose and xml_path:
+            print(f"Synthesis report XML: {xml_path}")
+        if args.verbose and rpt_path and rpt_path.exists():
+            print("---- Begin Synthesis Report (rpt) ----")
+            print(rpt_path.read_text())
+            print("---- End Synthesis Report (rpt) ----")
+        out_json = report_cfg.get("out_json", "")
+        if out_json:
+            Path(out_json).write_text(json.dumps(report, indent=2))
+        print(json.dumps(report["CSynthesisReport"], indent=2))
 
     predict_cfg = cfg.get("predict", {}) or {}
     compare_requested = args.compare or (predict_cfg.get("enable", False) and not args.no_compare)

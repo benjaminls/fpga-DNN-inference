@@ -47,6 +47,41 @@ run_tb() {
   cd "$BUILD_DIR"
 }
 
+run_tb_mixed() {
+  local name="$1"
+  shift
+  local vhdl_sources=()
+  local verilog_sources=()
+  local mode="vhdl"
+  for arg in "$@"; do
+    if [[ "$arg" == "--verilog" ]]; then
+      mode="verilog"
+      continue
+    fi
+    if [[ "$mode" == "vhdl" ]]; then
+      vhdl_sources+=("$arg")
+    else
+      verilog_sources+=("$arg")
+    fi
+  done
+
+  local test_dir="$BUILD_DIR/$name"
+  rm -rf "$test_dir"
+  mkdir -p "$test_dir"
+  cd "$test_dir"
+
+  rm -rf xsim.dir work
+
+  if [[ "${#verilog_sources[@]}" -gt 0 ]]; then
+    xvlog -work work -i "$ROOT_DIR/rtl/nn/generated" "${verilog_sources[@]}" 2>&1 | tee "$LOG_DIR/${name}_xvlog.log"
+  fi
+  xvhdl -2008 -work work "${vhdl_sources[@]}" 2>&1 | tee "$LOG_DIR/${name}_xvhdl.log"
+  xelab -debug typical -top "$name" 2>&1 | tee "$LOG_DIR/${name}_xelab.log"
+  xsim "work.$name" -R 2>&1 | tee "$LOG_DIR/${name}_xsim.log"
+
+  cd "$BUILD_DIR"
+}
+
 run_tb tb_stream_fifo \
   "$ROOT_DIR/rtl/pkg/common_pkg.vhd" \
   "$ROOT_DIR/rtl/stream/stream_fifo.vhd" \
@@ -80,7 +115,7 @@ run_tb tb_hls4ml_wrap_stub \
   "$ROOT_DIR/rtl/nn/hls4ml_wrap.vhd" \
   "$ROOT_DIR/sim/tb/tb_hls4ml_wrap_stub.vhd"
 
-run_tb tb_top_e2e \
+run_tb_mixed tb_top_e2e \
   "$ROOT_DIR/rtl/pkg/pkt_pkg.vhd" \
   "$ROOT_DIR/rtl/pkg/nn_pkg.vhd" \
   "$ROOT_DIR/rtl/protocol/crc16.vhd" \
@@ -89,4 +124,6 @@ run_tb tb_top_e2e \
   "$ROOT_DIR/rtl/nn/tensor_adapter.vhd" \
   "$ROOT_DIR/rtl/nn/hls4ml_wrap.vhd" \
   "$ROOT_DIR/rtl/ctrl/perf_counters.vhd" \
-  "$ROOT_DIR/sim/tb/tb_top_e2e.vhd"
+  "$ROOT_DIR/sim/tb/tb_top_e2e.vhd" \
+  --verilog \
+  "$ROOT_DIR/rtl/nn/generated/myproject"*.v
