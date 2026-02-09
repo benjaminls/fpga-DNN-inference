@@ -1,4 +1,10 @@
-"""Generate golden INFER_REQ/INFER_RSP packets from a trained PyTorch model."""
+"""Generate golden INFER_REQ/INFER_RSP packets from a trained PyTorch model.
+
+Writes hex fixtures to sim/fixtures/nn_in.hex and nn_out.hex, which can be sent \
+over UART to validate the hardware hls4ml core produces the same results as the \
+golden PyTorch model.
+
+"""
 
 from __future__ import annotations
 

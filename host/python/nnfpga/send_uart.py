@@ -80,7 +80,8 @@ def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", required=True, help="UART device (e.g., /dev/ttyUSB0)")
     ap.add_argument("--baud", type=int, default=115200, help="UART baud rate")
-    ap.add_argument("--req", required=True, help="Hex file for request packet (one byte per line)")
+    ap.add_argument("--req", default="", help="Hex file for request packet (one byte per line)")
+    ap.add_argument("--status", action="store_true", help="Send STATUS_REQ instead of file payload")
     ap.add_argument("--expect", default="", help="Optional hex file for expected response packet")
     ap.add_argument("--out", default="sim/fixtures/uart_last_rsp.hex", help="Save response hex here")
     ap.add_argument("--timeout", type=float, default=2.0, help="Read timeout in seconds")
@@ -93,10 +94,17 @@ def main() -> int:
     except Exception as exc:  # pragma: no cover - environment-dependent
         raise RuntimeError("pyserial is required (pip install pyserial)") from exc
 
-    req_path = Path(args.req)
-    req_data = _load_hex_bytes(req_path)
-    if args.verbose:
-        print(f"Loaded {len(req_data)} request bytes from {req_path}")
+    if args.status:
+        req_data = proto.pack_packet(proto.STATUS_REQ, b"", crc=args.crc)
+        if args.verbose:
+            print("Using STATUS_REQ packet")
+    else:
+        if not args.req:
+            raise ValueError("--req is required unless --status is set")
+        req_path = Path(args.req)
+        req_data = _load_hex_bytes(req_path)
+        if args.verbose:
+            print(f"Loaded {len(req_data)} request bytes from {req_path}")
 
     expect_data = b""
     expect_path = Path(args.expect) if args.expect else None

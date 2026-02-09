@@ -21,10 +21,14 @@ architecture rtl of top_nexys_video is
   -- UART transport
   signal rx_valid : std_logic;
   signal rx_ready : std_logic;
+  signal rx_ready_core : std_logic;
+  signal rx_ready_uart : std_logic;
   signal rx_data  : std_logic_vector(7 downto 0);
   signal tx_valid : std_logic;
+  signal tx_valid_core : std_logic;
   signal tx_ready : std_logic;
   signal tx_data  : std_logic_vector(7 downto 0);
+  signal tx_data_core  : std_logic_vector(7 downto 0);
 
   -- Protocol
   signal p_rx_valid : std_logic;
@@ -53,6 +57,11 @@ architecture rtl of top_nexys_video is
   signal t_out_data  : signed(15 downto 0);
   signal t_out_last  : std_logic;
 
+  -- Debug-only signals (temporary)
+  signal rx_pulse : std_logic := '0';
+  signal led_i    : std_logic_vector(7 downto 0) := (others => '0');
+  constant DBG_ECHO_EN : boolean := true;
+
 begin
   -- Simple 2-FF reset synchronizer (reset_btn assumed active-high)
   process (clk_100mhz)
@@ -74,8 +83,14 @@ begin
     end if;
   end process;
 
-  led <= (others => '0');
-  led(0) <= std_logic(counter(counter'high));
+  process (counter, uart_rx, rx_pulse)
+  begin
+    led_i <= (others => '0');
+    led_i(0) <= std_logic(counter(counter'high));
+    led_i(6) <= uart_rx; -- mirror raw RX pin
+    led_i(7) <= rx_pulse; -- toggle on rx_valid
+  end process;
+  led <= led_i;
 
   u_uart: entity work.uart_byte_stream
     generic map (G_CLKS_PER_BIT => 868)
@@ -85,12 +100,26 @@ begin
       uart_rx => uart_rx,
       uart_tx => uart_tx,
       rx_valid => rx_valid,
-      rx_ready => rx_ready,
+      rx_ready => rx_ready_uart,
       rx_data => rx_data,
       tx_valid => tx_valid,
       tx_ready => tx_ready,
       tx_data => tx_data
     );
+
+  -- Debug: toggle LED on every received byte
+  process (clk_100mhz)
+  begin
+    if rising_edge(clk_100mhz) then
+      if rst = '1' then
+        rx_pulse <= '0';
+      else
+        if rx_valid = '1' then
+          rx_pulse <= not rx_pulse;
+        end if;
+      end if;
+    end if;
+  end process;
 
   u_rx: entity work.pkt_rx
     generic map (G_CRC_EN => false)
@@ -98,7 +127,7 @@ begin
       clk => clk_100mhz,
       rst => rst,
       in_valid => rx_valid,
-      in_ready => rx_ready,
+      in_ready => rx_ready_core,
       in_data => rx_data,
       out_valid => p_rx_valid,
       out_ready => p_rx_ready,
@@ -171,12 +200,18 @@ begin
       start => tx_start,
       pkt_type => INFER_RSP,
       pkt_len => pkt_len,
+      -- Debug echo path: send raw UART RX bytes back out
       in_valid => p_tx_valid,
       in_ready => p_tx_ready,
       in_data => p_tx_data,
-      out_valid => tx_valid,
+      out_valid => tx_valid_core,
       out_ready => tx_ready,
-      out_data => tx_data
+      out_data => tx_data_core
     );
+
+  -- Debug echo path (temporary): bypass protocol and echo UART RX bytes
+  rx_ready_uart <= '1' when DBG_ECHO_EN else rx_ready_core;
+  tx_valid <= rx_valid when DBG_ECHO_EN else tx_valid_core;
+  tx_data  <= rx_data  when DBG_ECHO_EN else tx_data_core;
 
 end architecture;

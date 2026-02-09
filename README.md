@@ -5,6 +5,9 @@ Pure-RTL (VHDL) NN inference pipeline targeting the Digilent Nexys Video.
 ## Quick Start
 - Build bitstream (Vivado CLI):
   - `make build`
+- Program FPGA (Vivado CLI):
+  - `vivado -mode batch -source scripts/program_fpga.tcl`
+  - or pass a specific bitfile: `vivado -mode batch -source scripts/program_fpga.tcl -tclargs /path/to.bit`
 
 ## Repo Layout
 - `rtl/`: synthesizable VHDL

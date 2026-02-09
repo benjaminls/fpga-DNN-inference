@@ -9,7 +9,10 @@ set_property -dict { PACKAGE_PIN B22 IOSTANDARD LVCMOS12 } [get_ports { reset_bt
 
 ## UART
 # Board silkscreen: UART RX/TX via USB-UART.
-# Map FPGA input (uart_rx) to FTDI TX (uart_tx_in), and FPGA output (uart_tx) to FTDI RX (uart_rx_out).
+# Map FPGA RX to FTDI TX (uart_tx_in), FPGA TX to FTDI RX (uart_rx_out).
+# Nexys Video master XDC labels (DTE/PC perspective):
+#   uart_tx_in = V18 (PC -> FPGA)  => FPGA uart_rx
+#   uart_rx_out = AA19 (FPGA -> PC) => FPGA uart_tx
 set_property -dict { PACKAGE_PIN V18 IOSTANDARD LVCMOS33 } [get_ports { uart_rx }]
 set_property -dict { PACKAGE_PIN AA19 IOSTANDARD LVCMOS33 } [get_ports { uart_tx }]
 
