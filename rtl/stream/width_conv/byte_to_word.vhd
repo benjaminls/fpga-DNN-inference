@@ -36,12 +36,14 @@ architecture rtl of byte_to_word is
   end function;
 
   signal out_valid_i : std_logic;
+  signal in_ready_i  : std_logic;
 begin
   out_data  <= buf;
   out_valid <= out_valid_i;
 
   out_valid_i <= '1' when count = WORD_BYTES else '0';
-  in_ready    <= '1' when count < WORD_BYTES else '0';
+  in_ready_i  <= '1' when count < WORD_BYTES else '0';
+  in_ready    <= in_ready_i;
 
   process (clk)
   begin
@@ -54,7 +56,7 @@ begin
           count <= 0;
         end if;
 
-        if in_valid = '1' and in_ready = '1' then
+        if in_valid = '1' and in_ready_i = '1' then
           buf   <= set_byte(buf, count, in_data);
           count <= count + 1;
         end if;

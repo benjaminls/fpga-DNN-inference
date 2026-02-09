@@ -23,6 +23,7 @@ architecture rtl of word_to_byte is
   signal buf   : std_logic_vector(G_WORD_WIDTH-1 downto 0) := (others => '0');
   signal idx   : natural range 0 to WORD_BYTES := 0;
   signal busy  : std_logic := '0';
+  signal in_ready_i : std_logic := '0';
 
   function get_byte(
     value : std_logic_vector(G_WORD_WIDTH-1 downto 0);
@@ -33,7 +34,8 @@ architecture rtl of word_to_byte is
     return value(l+7 downto l);
   end function;
 begin
-  in_ready  <= '1' when busy = '0' else '0';
+  in_ready_i <= '1' when busy = '0' else '0';
+  in_ready  <= in_ready_i;
   out_valid <= busy;
   out_data  <= get_byte(buf, idx);
 
@@ -46,7 +48,7 @@ begin
         busy <= '0';
       else
         if busy = '0' then
-          if in_valid = '1' and in_ready = '1' then
+          if in_valid = '1' and in_ready_i = '1' then
             buf  <= in_data;
             idx  <= 0;
             busy <= '1';

@@ -49,7 +49,7 @@ begin
   nn_frac_w <= std_logic_vector(to_unsigned(NN_FRAC_WIDTH, 16));
 
   -- Little-endian layout for all multi-byte fields
-  process (all)
+  process (idx, cycles_reg, stalls_reg, infers_reg, nn_data_w, nn_frac_w)
   begin
     case to_integer(idx) is
       when 0  => out_data_i <= BUILD_ID(7 downto 0);

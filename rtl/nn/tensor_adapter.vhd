@@ -49,6 +49,7 @@ architecture rtl of tensor_adapter is
   signal hold_valid   : std_logic := '0';
   signal hold_data    : signed(G_DATA_WIDTH-1 downto 0) := (others => '0');
   signal hold_last    : std_logic := '0';
+  signal in_ready_i   : std_logic := '0';
 
   -- Output unpacking
   signal out_buf      : std_logic_vector(G_DATA_WIDTH-1 downto 0) := (others => '0');
@@ -79,7 +80,8 @@ architecture rtl of tensor_adapter is
 
 begin
   -- Input side (bytes -> tensor element)
-  in_ready    <= '1' when hold_valid = '0' else '0';
+  in_ready_i  <= '1' when hold_valid = '0' else '0';
+  in_ready    <= in_ready_i;
   tensor_valid <= hold_valid;
   tensor_data  <= hold_data;
   tensor_last  <= hold_last;
@@ -98,7 +100,7 @@ begin
           hold_valid <= '0';
         end if;
 
-        if in_valid = '1' and in_ready = '1' then
+        if in_valid = '1' and in_ready_i = '1' then
           in_buf <= set_byte(in_buf, in_idx, in_data);
           if in_idx = BYTES_PER_ELEM-1 then
             hold_data  <= signed(set_byte(in_buf, in_idx, in_data));

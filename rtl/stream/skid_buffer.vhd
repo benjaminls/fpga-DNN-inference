@@ -20,8 +20,10 @@ end entity;
 architecture rtl of skid_buffer is
   signal reg_valid : std_logic := '0';
   signal reg_data  : std_logic_vector(G_DATA_WIDTH-1 downto 0) := (others => '0');
+  signal in_ready_i : std_logic := '0';
 begin
-  in_ready  <= out_ready or (not reg_valid);
+  in_ready_i <= out_ready or (not reg_valid);
+  in_ready  <= in_ready_i;
   out_valid <= reg_valid;
   out_data  <= reg_data;
 
@@ -32,7 +34,7 @@ begin
         reg_valid <= '0';
         reg_data  <= (others => '0');
       else
-        if in_ready = '1' then
+        if in_ready_i = '1' then
           reg_valid <= in_valid;
           if in_valid = '1' then
             reg_data <= in_data;

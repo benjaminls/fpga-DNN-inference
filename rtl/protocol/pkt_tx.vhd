@@ -41,10 +41,12 @@ architecture rtl of pkt_tx is
   signal crc_out    : std_logic_vector(15 downto 0);
 
   signal out_valid_i : std_logic;
+  signal out_data_i  : std_logic_vector(7 downto 0) := (others => '0');
   signal in_ready_i  : std_logic;
 
 begin
   out_valid <= out_valid_i;
+  out_data  <= out_data_i;
   in_ready  <= in_ready_i;
 
   -- CRC over header+payload bytes
@@ -54,37 +56,37 @@ begin
       rst     => rst,
       clear   => crc_clear,
       enable  => crc_en,
-      data_in => out_data,
+      data_in => out_data_i,
       crc_out => crc_out
     );
 
-  process (all)
+  process (state, hdr_idx, type_reg, len_reg, in_valid, in_data, out_ready, crc_out)
   begin
     out_valid_i <= '0';
     in_ready_i  <= '0';
-    out_data    <= (others => '0');
+    out_data_i  <= (others => '0');
 
     case state is
       when S_HDR =>
         out_valid_i <= '1';
         case to_integer(hdr_idx) is
-          when 0 => out_data <= PKT_MAGIC(15 downto 8);
-          when 1 => out_data <= PKT_MAGIC(7 downto 0);
-          when 2 => out_data <= PKT_VERSION;
-          when 3 => out_data <= type_reg;
-          when 4 => out_data <= len_reg(15 downto 8);
-          when others => out_data <= len_reg(7 downto 0);
+          when 0 => out_data_i <= PKT_MAGIC(15 downto 8);
+          when 1 => out_data_i <= PKT_MAGIC(7 downto 0);
+          when 2 => out_data_i <= PKT_VERSION;
+          when 3 => out_data_i <= type_reg;
+          when 4 => out_data_i <= len_reg(15 downto 8);
+          when others => out_data_i <= len_reg(7 downto 0);
         end case;
       when S_PAYLOAD =>
         out_valid_i <= in_valid;
         in_ready_i  <= out_ready;
-        out_data    <= in_data;
+        out_data_i  <= in_data;
       when S_CRC1 =>
         out_valid_i <= '1';
-        out_data <= crc_out(15 downto 8);
+        out_data_i <= crc_out(15 downto 8);
       when S_CRC2 =>
         out_valid_i <= '1';
-        out_data <= crc_out(7 downto 0);
+        out_data_i <= crc_out(7 downto 0);
       when others =>
         null;
     end case;

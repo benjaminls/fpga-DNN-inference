@@ -35,9 +35,10 @@ architecture rtl of hls4ml_wrap is
   signal hold_data  : signed(G_DATA_WIDTH-1 downto 0) := (others => '0');
   signal hold_last  : std_logic := '0';
 
-  signal pack_buf   : std_logic_vector(IN_BITS-1 downto 0) := (others => '0');
-  signal pack_idx   : natural range 0 to G_IN_DIM := 0;
-  signal pack_full  : std_logic := '0';
+  signal pack_buf    : std_logic_vector(IN_BITS-1 downto 0) := (others => '0');
+  signal pack_idx    : natural range 0 to G_IN_DIM := 0;
+  signal pack_full   : std_logic := '0';
+  signal in_ready_i  : std_logic := '0';
 
   signal hls_in_valid  : std_logic := '0';
   signal hls_in_ready  : std_logic := '0';
@@ -79,9 +80,10 @@ begin
   -- Stub mode: 1-cycle latency passthrough
   ap_rst_n <= not rst;
 
-  in_ready <= '1' when G_STUB and hold_valid = '0' else
+  in_ready_i <= '1' when G_STUB and hold_valid = '0' else
               '1' when (not G_STUB) and pack_full = '0' else
               '0';
+  in_ready <= in_ready_i;
   out_valid <= hold_valid when G_STUB else hls_out_valid;
   out_data  <= hold_data when G_STUB else signed(hls_out_data);
   out_last  <= hold_last when G_STUB else '1';
@@ -104,7 +106,7 @@ begin
           hold_valid <= '0';
         end if;
 
-        if in_valid = '1' and in_ready = '1' then
+        if in_valid = '1' and in_ready_i = '1' then
           if G_STUB then
             hold_data  <= in_data; -- y = x
             hold_last  <= in_last;
