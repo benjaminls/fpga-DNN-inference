@@ -50,3 +50,4 @@ sim/fixtures/uart_last_rsp.hex
 
 # Development
 .local/
+sim/fixtures/hls4ml_tmp/*

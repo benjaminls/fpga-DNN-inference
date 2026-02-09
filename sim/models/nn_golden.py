@@ -37,6 +37,8 @@ def main() -> int:
     ap.add_argument("--checkpoint", required=True, help="Path to model.pt")
     ap.add_argument("--out-dir", default="sim/fixtures", help="Output directory for hex fixtures")
     ap.add_argument("--index", type=int, default=0, help="Test sample index")
+    ap.add_argument("--use-hls4ml", action="store_true", help="Use hls4ml model for golden output")
+    ap.add_argument("--hls-config", default="nn/hls4ml_config.yaml", help="hls4ml config (for --use-hls4ml)")
     args = ap.parse_args()
 
     cfg = config_mod.load_config(args.config)
@@ -57,8 +59,38 @@ def main() -> int:
         raise ValueError(f"index out of range: {idx}")
 
     x_vec = X_test[idx]
-    with torch.no_grad():
-        y_pred = model(torch.from_numpy(x_vec).float().unsqueeze(0)).numpy().squeeze()
+    if args.use_hls4ml:
+        try:
+            import hls4ml  # type: ignore
+        except Exception as exc:
+            raise RuntimeError("hls4ml is required for --use-hls4ml") from exc
+
+        import yaml
+
+        hls_cfg = yaml.safe_load(Path(args.hls_config).read_text())
+        h = hls_cfg["hls4ml"]
+        hls_config = hls4ml.utils.config_from_pytorch_model(
+            model,
+            input_shape=(X_train.shape[1],),
+            granularity="model",
+            backend=h.get("backend", "Vitis"),
+            default_reuse_factor=int(h.get("reuse_factor", 1)),
+            default_precision=h.get("precision", "ap_fixed<16,6>"),
+        )
+
+        hls_model = hls4ml.converters.convert_from_pytorch_model(
+            model,
+            hls_config=hls_config,
+            output_dir=str(Path("sim/fixtures/hls4ml_tmp").resolve()),
+            part=h.get("part", "xc7a200tsbg484-1"),
+            clock_period=float(h.get("clock_period", 10.0)),
+            io_type=h.get("io_type", "io_stream"),
+        )
+        hls_model.compile()
+        y_pred = hls_model.predict(np.ascontiguousarray(x_vec.reshape(1, -1))).squeeze()
+    else:
+        with torch.no_grad():
+            y_pred = model(torch.from_numpy(x_vec).float().unsqueeze(0)).numpy().squeeze()
 
     payload_in = fixedpoint.pack_values(x_vec.tolist())
     payload_out = fixedpoint.pack_values([float(y_pred)])
