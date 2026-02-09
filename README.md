@@ -35,7 +35,7 @@ vivado -mode batch -source scripts/build_vivado.tcl &&
 vivado -mode batch -source scripts/program_fpga.tcl
 ```
 
-Send packet using command:
+Send STATUS (`--status`) protocol packet using command:
 ```bash
 python host/python/nnfpga/send_uart.py --port /dev/ttyUSB0 --status --verbose --baud 115200
 ```
