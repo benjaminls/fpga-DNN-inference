@@ -40,9 +40,10 @@ nn/**/dataset/*.zip
 rtl/hls4ml_ip/
 rtl/nn/generated/
 
-# Simulation inputs and outputs (golden)
+# Simulation and UART inputs and outputs hex (first 2 from golden)
 sim/fixtures/nn_in.hex
 sim/fixtures/nn_out.hex
+sim/fixtures/uart_last_rsp.hex
 
 # OS
 .DS_Store

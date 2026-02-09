@@ -46,6 +46,22 @@ architecture rtl of top_nexys_video is
   signal p_tx_last  : std_logic;
 
   signal tx_start : std_logic := '0';
+  signal infer_start : std_logic := '0';
+  signal status_start : std_logic := '0';
+  signal status_mode : std_logic := '0';
+
+  signal status_out_valid : std_logic;
+  signal status_out_ready : std_logic;
+  signal status_out_data  : std_logic_vector(7 downto 0);
+  signal status_out_last  : std_logic;
+  signal status_len       : std_logic_vector(15 downto 0);
+
+  signal tx_in_valid : std_logic;
+  signal tx_in_ready : std_logic;
+  signal tx_in_data  : std_logic_vector(7 downto 0);
+
+  signal tx_pkt_type : pkt_type_t;
+  signal tx_pkt_len  : std_logic_vector(15 downto 0);
 
   -- Tensor path
   signal t_valid : std_logic;
@@ -57,10 +73,15 @@ architecture rtl of top_nexys_video is
   signal t_out_data  : signed(15 downto 0);
   signal t_out_last  : std_logic;
 
+  -- Perf counters for STATUS
+  signal cycles : std_logic_vector(31 downto 0);
+  signal stalls : std_logic_vector(31 downto 0);
+  signal infers : std_logic_vector(31 downto 0);
+
   -- Debug-only signals (temporary)
   signal rx_pulse : std_logic := '0';
   signal led_i    : std_logic_vector(7 downto 0) := (others => '0');
-  constant DBG_ECHO_EN : boolean := true;
+  constant DBG_ECHO_EN : boolean := false;
 
 begin
   -- Simple 2-FF reset synchronizer (reset_btn assumed active-high)
@@ -139,6 +160,21 @@ begin
       pkt_error => pkt_error
     );
 
+  u_status: entity work.mmio_status
+    port map (
+      clk => clk_100mhz,
+      rst => rst,
+      start => status_start,
+      cycles => cycles,
+      stalls => stalls,
+      infers => infers,
+      out_valid => status_out_valid,
+      out_ready => status_out_ready,
+      out_data => status_out_data,
+      out_last => status_out_last,
+      payload_len => status_len
+    );
+
   u_tensor: entity work.tensor_adapter
     generic map (G_DATA_WIDTH => 16)
     port map (
@@ -177,20 +213,45 @@ begin
       out_last => t_out_last
     );
 
-  -- respond to INFER_REQ only (STATUS path added later in milestone 3+)
+  -- respond to INFER_REQ and STATUS_REQ
   process (clk_100mhz)
   begin
     if rising_edge(clk_100mhz) then
       if rst = '1' then
         tx_start <= '0';
+        infer_start <= '0';
+        status_start <= '0';
+        status_mode <= '0';
       else
         tx_start <= '0';
-        if pkt_valid = '1' and pkt_type = INFER_REQ and pkt_error = '0' then
-          tx_start <= '1';
+        infer_start <= '0';
+        status_start <= '0';
+
+        if pkt_valid = '1' and pkt_error = '0' then
+          if pkt_type = STATUS_REQ then
+            status_start <= '1';
+            tx_start <= '1';
+            status_mode <= '1';
+          elsif pkt_type = INFER_REQ then
+            infer_start <= '1';
+            tx_start <= '1';
+          end if;
+        end if;
+
+        if status_mode = '1' and status_out_valid = '1' and status_out_ready = '1' and status_out_last = '1' then
+          status_mode <= '0';
         end if;
       end if;
     end if;
   end process;
+
+  tx_pkt_type <= STATUS_RSP when status_start = '1' else INFER_RSP;
+  tx_pkt_len  <= status_len when status_start = '1' else pkt_len;
+
+  tx_in_valid <= status_out_valid when status_mode = '1' else p_tx_valid;
+  tx_in_data  <= status_out_data  when status_mode = '1' else p_tx_data;
+  status_out_ready <= tx_in_ready when status_mode = '1' else '0';
+  p_tx_ready <= tx_in_ready when status_mode = '0' else '0';
 
   u_tx: entity work.pkt_tx
     generic map (G_CRC_EN => false)
@@ -198,15 +259,25 @@ begin
       clk => clk_100mhz,
       rst => rst,
       start => tx_start,
-      pkt_type => INFER_RSP,
-      pkt_len => pkt_len,
-      -- Debug echo path: send raw UART RX bytes back out
-      in_valid => p_tx_valid,
-      in_ready => p_tx_ready,
-      in_data => p_tx_data,
+      pkt_type => tx_pkt_type,
+      pkt_len => tx_pkt_len,
+      in_valid => tx_in_valid,
+      in_ready => tx_in_ready,
+      in_data => tx_in_data,
       out_valid => tx_valid_core,
       out_ready => tx_ready,
       out_data => tx_data_core
+    );
+
+  u_cnt: entity work.perf_counters
+    port map (
+      clk => clk_100mhz,
+      rst => rst,
+      stall_pulse => '0',
+      infer_pulse => t_out_valid and t_out_ready and t_out_last,
+      cycles => cycles,
+      stalls => stalls,
+      infers => infers
     );
 
   -- Debug echo path (temporary): bypass protocol and echo UART RX bytes
