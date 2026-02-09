@@ -130,6 +130,20 @@ def main() -> int:
         pkt = proto.unpack_packet(rsp_data, crc=args.crc)
         if args.verbose:
             print(f"Response type: 0x{pkt.pkt_type:02X}, payload length: {len(pkt.payload)}")
+        if pkt.pkt_type == proto.STATUS_RSP and len(pkt.payload) >= 20:
+            build_id = int.from_bytes(pkt.payload[0:4], "little")
+            cycles = int.from_bytes(pkt.payload[4:8], "little")
+            stalls = int.from_bytes(pkt.payload[8:12], "little")
+            infers = int.from_bytes(pkt.payload[12:16], "little")
+            nn_data_w = int.from_bytes(pkt.payload[16:18], "little")
+            nn_frac_w = int.from_bytes(pkt.payload[18:20], "little")
+            print("STATUS:")
+            print(f"  build_id : 0x{build_id:08X}")
+            print(f"  cycles   : {cycles}")
+            print(f"  stalls   : {stalls}")
+            print(f"  infers   : {infers}")
+            print(f"  nn_width : {nn_data_w}")
+            print(f"  nn_frac  : {nn_frac_w}")
     except Exception as exc:
         print(f"Warning: response packet parse failed: {exc}")
 
