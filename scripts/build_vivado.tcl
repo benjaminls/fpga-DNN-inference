@@ -1,18 +1,42 @@
 # Vivado batch build
+set script_dir [file dirname [info script]]
+set root_dir [file normalize [file join $script_dir ".."]]
 set proj_name fpga_dnn_inference
-set proj_dir "build/vivado"
+set proj_dir [file join $root_dir "build" "vivado"]
 set part_name "xc7a200tsbg484-1"
 
 file mkdir $proj_dir
 
 create_project -force $proj_name $proj_dir -part $part_name
 
-set vhdl_files [glob -nocomplain -directory rtl -types f -recursive *.vhd]
+proc collect_files {base pattern} {
+    set results {}
+    foreach item [glob -nocomplain -directory $base *] {
+        if {[file isdirectory $item]} {
+            set results [concat $results [collect_files $item $pattern]]
+        } else {
+            if {[string match $pattern [file tail $item]]} {
+                lappend results $item
+            }
+        }
+    }
+    return $results
+}
+
+set vhdl_files [collect_files [file join $root_dir "rtl"] "*.vhd"]
 if {[llength $vhdl_files] > 0} {
     add_files -norecurse $vhdl_files
 }
 
-add_files -fileset constrs_1 constraints/nexys_video.xdc
+set verilog_files [collect_files [file join $root_dir "rtl" "nn" "generated"] "*.v"]
+if {[llength $verilog_files] > 0} {
+    add_files -norecurse $verilog_files
+}
+
+set_property source_mgmt_mode None [current_project]
+set_property include_dirs [file join $root_dir "rtl" "nn" "generated"] [current_fileset]
+
+add_files -fileset constrs_1 [file join $root_dir "constraints" "nexys_video.xdc"]
 
 set_property top top_nexys_video [current_fileset]
 

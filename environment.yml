@@ -38,6 +38,7 @@ dependencies:
   - pyyaml
   - packaging
   - typing_extensions
+  - pyserial
 
   - tensorboard
   - torchmetrics
