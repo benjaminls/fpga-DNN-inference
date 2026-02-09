@@ -2,6 +2,7 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 use work.pkt_pkg.all;
+use work.nn_pkg.all;
 
 entity top_nexys_video is
   port (
@@ -62,6 +63,7 @@ architecture rtl of top_nexys_video is
 
   signal tx_pkt_type : pkt_type_t;
   signal tx_pkt_len  : std_logic_vector(15 downto 0);
+  signal infer_rsp_len : std_logic_vector(15 downto 0);
 
   -- Tensor path
   signal t_valid : std_logic;
@@ -245,8 +247,9 @@ begin
     end if;
   end process;
 
+  infer_rsp_len <= std_logic_vector(to_unsigned(NN_DATA_WIDTH / 8, 16));
   tx_pkt_type <= STATUS_RSP when status_start = '1' else INFER_RSP;
-  tx_pkt_len  <= status_len when status_start = '1' else pkt_len;
+  tx_pkt_len  <= status_len when status_start = '1' else infer_rsp_len;
 
   tx_in_valid <= status_out_valid when status_mode = '1' else p_tx_valid;
   tx_in_data  <= status_out_data  when status_mode = '1' else p_tx_data;
