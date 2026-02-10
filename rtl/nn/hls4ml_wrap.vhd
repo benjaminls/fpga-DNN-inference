@@ -10,9 +10,7 @@ entity hls4ml_wrap is
   generic (
     G_DATA_WIDTH : natural := NN_DATA_WIDTH;
     G_IN_DIM     : natural := 8;
-    G_STUB       : boolean := true;
-    G_REVERSE_IN : boolean := false;
-    G_SWAP_BYTES : boolean := false
+    G_STUB       : boolean := true
   );
   port (
     clk        : in  std_logic;
@@ -59,24 +57,6 @@ architecture rtl of hls4ml_wrap is
     variable l : natural := idx * G_DATA_WIDTH;
   begin
     v(l+G_DATA_WIDTH-1 downto l) := elem;
-    return v;
-  end function;
-
-  function map_idx(idx : natural) return natural is
-  begin
-    if G_REVERSE_IN then
-      return G_IN_DIM - 1 - idx;
-    else
-      return idx;
-    end if;
-  end function;
-
-  function swap_bytes(elem : std_logic_vector(G_DATA_WIDTH-1 downto 0)) return std_logic_vector is
-    variable v : std_logic_vector(G_DATA_WIDTH-1 downto 0) := elem;
-  begin
-    if G_SWAP_BYTES and G_DATA_WIDTH = 16 then
-      v := elem(7 downto 0) & elem(15 downto 8);
-    end if;
     return v;
   end function;
 
@@ -132,7 +112,7 @@ begin
             hold_last  <= in_last;
             hold_valid <= '1';
           else
-            pack_buf <= set_elem(pack_buf, map_idx(pack_idx), swap_bytes(std_logic_vector(in_data)));
+            pack_buf <= set_elem(pack_buf, pack_idx, std_logic_vector(in_data));
             if pack_idx = G_IN_DIM-1 then
               pack_full <= '1';
               pack_idx  <= 0;
