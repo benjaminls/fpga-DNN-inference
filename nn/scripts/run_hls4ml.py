@@ -12,6 +12,7 @@ import subprocess
 import json
 import yaml
 import warnings
+import shutil
 
 try:
     import tensorflow as tf
@@ -317,6 +318,7 @@ def main() -> int:
     ap.add_argument("--write-only", action="store_true", help="Only write hls4ml project files")
     ap.add_argument("--plot-model", action="store_true", help="Plot the hls4ml model topology")
     ap.add_argument("--report", action="store_true", help="Read HLS report only")
+    ap.add_argument("--clean", action="store_true", help="Remove existing hls4ml project output_dir before running")
     compare_group = ap.add_mutually_exclusive_group()
     compare_group.add_argument("--compare", action="store_true", help="Run hls4ml vs PyTorch comparison")
     compare_group.add_argument("--no-compare", action="store_true", help="Disable comparison even if config enables it")
@@ -335,6 +337,11 @@ def main() -> int:
     source = model_cfg.get("source", "pytorch")
     onnx_path = Path(model_cfg.get("onnx_path", "")).resolve()
     out_dir = Path(model_cfg["output_dir"]).resolve()
+
+    if args.clean:
+        if out_dir.exists():
+            shutil.rmtree(out_dir)
+        out_dir.mkdir(parents=True, exist_ok=True)
 
 
     hls_kwargs = {

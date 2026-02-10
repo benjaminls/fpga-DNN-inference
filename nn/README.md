@@ -56,6 +56,12 @@ Generate an hls4ml project from ONNX or PyTorch:
 python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml
 ```
 
+If you need to force a clean rebuild of the HLS project (recommended when weights change):
+
+```bash
+python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --clean --all
+```
+
 Run the full HLS flow (C sim + synth + export), using hls4ml's build helpers:
 
 ```bash

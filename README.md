@@ -63,7 +63,7 @@ python sim/models/nn_golden.py \
 Then ensure the FPGA bitfile is built from the same model export:
 
 ```bash
-python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --write-only
+python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --clean --all
 scripts/sync_hls4ml_ip.sh
 vivado -mode batch -source scripts/build_vivado.tcl
 vivado -mode batch -source scripts/program_fpga.tcl
