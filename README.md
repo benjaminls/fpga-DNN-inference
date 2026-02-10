@@ -54,7 +54,7 @@ Once the STATUS path returned a valid packet (`0x81` with 20-byte payload), UART
 
 We sent a real STATUS_REQ packet (type 0x01) using the same header/format as the inference packets, but make no mistake, it is not inference. It's a real protocol request and exercises the UART + packet parsing + response path.
 
-### Hardware Inference Workflow Notes
+### Hardware Inference Workflow
 If INFER responses mismatch the golden file, the most common cause is using a **PyTorch** golden while the FPGA runs **hls4ml-quantized** math. Generate fixtures from hls4ml to match the hardware:
 
 ```bash
@@ -82,7 +82,7 @@ python host/python/nnfpga/send_uart.py \
   --baud 115200
 ```
 
-### Debugging Note: “Quantized Golden Mismatch”
+### Quantized Golden Fixture Mismatch
 **Symptom:** RTL sim (`tb_top_e2e`) and hardware UART both returned a valid `INFER_RSP`, but payload bytes
 did not match `nn_out.hex` (example mismatch at payload byte 0).
 
