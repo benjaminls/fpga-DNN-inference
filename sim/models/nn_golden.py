@@ -59,6 +59,8 @@ def main() -> int:
         raise ValueError(f"index out of range: {idx}")
 
     x_vec = X_test[idx]
+    # Quantize to the exact fixed-point values that will be sent over UART.
+    x_vec_q = fixedpoint.unpack_values(fixedpoint.pack_values(x_vec.tolist()))
     if args.use_hls4ml:
         try:
             import hls4ml  # type: ignore
@@ -87,10 +89,12 @@ def main() -> int:
             io_type=h.get("io_type", "io_stream"),
         )
         hls_model.compile()
-        y_pred = hls_model.predict(np.ascontiguousarray(x_vec.reshape(1, -1))).squeeze()
+        y_pred = hls_model.predict(np.ascontiguousarray(np.array(x_vec_q, dtype=np.float32).reshape(1, -1))).squeeze()
+        print("Using hls4ml model for golden output")
     else:
         with torch.no_grad():
             y_pred = model(torch.from_numpy(x_vec).float().unsqueeze(0)).numpy().squeeze()
+        print("Using PyTorch model for golden output")
 
     payload_in = fixedpoint.pack_values(x_vec.tolist())
     payload_out = fixedpoint.pack_values([float(y_pred)])
@@ -101,6 +105,8 @@ def main() -> int:
     out_dir = Path(args.out_dir)
     _write_hex_bytes(out_dir / "nn_in.hex", req_pkt)
     _write_hex_bytes(out_dir / "nn_out.hex", rsp_pkt)
+    print(f"y_pred={float(y_pred):.9f}")
+    print(f"payload_out bytes: {[f'{b:02X}' for b in payload_out]}")
     print(f"Wrote {out_dir}/nn_in.hex and {out_dir}/nn_out.hex")
     return 0
 
