@@ -112,6 +112,29 @@ python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --compare
 python nn/scripts/run_hls4ml.py --config nn/hls4ml_config.yaml --report
 ```
 
+## Hardware Bring-up Tips
+When comparing FPGA inference to a golden fixture, generate the golden output
+using hls4ml (fixed-point) rather than pure PyTorch:
+
+```bash
+python sim/models/nn_golden.py \
+  --config nn/configs/calhouse.yaml \
+  --checkpoint nn/outputs/calhouse/default/model.pt \
+  --use-hls4ml
+```
+
+Then build/program and run the UART test:
+
+```bash
+vivado -mode batch -source scripts/build_vivado.tcl
+vivado -mode batch -source scripts/program_fpga.tcl
+python host/python/nnfpga/send_uart.py \
+  --port /dev/ttyUSB0 \
+  --req sim/fixtures/nn_in.hex \
+  --expect sim/fixtures/nn_out.hex \
+  --baud 115200
+```
+
 Key YAML knobs:
 - `model.source` (`onnx` or `pytorch`)
 - `hls4ml.reuse_factor`
